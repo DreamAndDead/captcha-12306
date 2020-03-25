@@ -1,9 +1,9 @@
 import argparse
 import pickle
 import cv2
+import json
 from imutils import paths
 import os
-import json
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelBinarizer
@@ -14,67 +14,88 @@ from keras.layers.convolutional import Conv2D, MaxPooling2D
 from keras.layers import Dense, Activation, Flatten
 from keras import backend as K
 from keras import optimizers
+from keras.models import load_model
 from keras.callbacks import Callback
 from keras.callbacks import ReduceLROnPlateau
 from keras.applications import VGG16
 from keras.preprocessing.image import ImageDataGenerator
+from keras import regularizers
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+import tensorflow as tf
+config = tf.compat.v1.ConfigProto()
+config.gpu_options.allow_growth = True
+session = tf.compat.v1.InteractiveSession(config=config)
 
 
 def create_model(width, height, depth, classes):
     base = VGG16(weights='imagenet', include_top=False, input_shape=(height, width, depth))
 
-    for layer in base.layers[:-4]:
+    for layer in base.layers:
         layer.trainable = False
     
     model = Sequential([
         base,
         layers.BatchNormalization(),
-        layers.Conv2D(64, (3, 3), activation='relu', padding='same'),
+
         layers.GlobalAveragePooling2D(),
         layers.BatchNormalization(),
-        layers.Dense(64, activation='relu'),
+
+        layers.Dense(512, activation='relu'),
+        layers.Dropout(0.50),
         layers.BatchNormalization(),
-        layers.Dropout(0.20),
+
+        layers.Dense(256, activation='relu'),
+        layers.Dropout(0.25),
+
         layers.Dense(classes, activation='softmax')
     ])
-
-    model.compile(loss="categorical_crossentropy", optimizer=optimizers.RMSprop(lr=1e-5), metrics=["accuracy"])
+    
+    model.compile(loss="categorical_crossentropy",
+                  optimizer=optimizers.SGD(lr=1e-2, momentum=0.9),
+                  metrics=["accuracy"])
 
     return model
 
 
-def load_image():
-    data_dir = './dataset/annotation/image/'
-    images = list(paths.list_images(data_dir))
-
-    X = []
-    Y = []
-    for img_path in images:
-        x = cv2.imread(img_path)
-        mean = [103.939, 116.779, 123.68]
-        x = x.astype('float32') - mean
-        y = os.path.basename(os.path.dirname(img_path))
-
-        X.append(x)
-        Y.append(y)
-
-    return np.array(X), np.array(Y)
-
-
 class DataLoader:
-    def load_dataset(self):
-        X, Y = load_image()
+    def __init__(self, image_dir):
+        self.image_dir = image_dir
+        
+    def load_image(self):
+        data_dir = self.image_dir
+        images = list(paths.list_images(data_dir))
 
-        X = self.preprocess(X)
+        X = []
+        Y = []
+        for img_path in images:
+            x = cv2.imread(img_path)
+            mean = [103.939, 116.779, 123.68]
+            x = x.astype('float32') - mean
+            y = os.path.basename(os.path.dirname(img_path))
+
+            X.append(x)
+            Y.append(y)
+
+        return np.array(X), np.array(Y)
+
+    def load_dataset(self):
+        X, Y = self.load_image()
+
+        trainX, testX, trainY, testY = train_test_split(X, Y, test_size=0.2, random_state=42)
+
+        trainX = self.preprocess(trainX)
+        testX = self.preprocess(testX)
 
         self.le = LabelBinarizer()
-        Y = self.le.fit_transform(Y)
+        trainY = self.le.fit_transform(trainY)
+        testY = self.le.transform(testY)
 
-        return train_test_split(X, Y, test_size=0.2, random_state=1)
-
+        return trainX, testX, trainY, testY
+    
     def preprocess(self, X):
         return X
 
@@ -119,7 +140,7 @@ class TrainingState(Callback):
         
         logs = logs or None
         for k, v in logs.items():
-            self.history.setdefault(k, []).append(v)
+            self.history.setdefault(k, []).append(float(v))
 
         self.save_json_log()
         self.save_png_log()
@@ -140,13 +161,14 @@ class TrainingState(Callback):
         plt.figure()
         plt.plot(np.arange(0, size), history["loss"], label="train_loss")
         plt.plot(np.arange(0, size), history["val_loss"], label="val_loss")
-        plt.plot(np.arange(0, size), history["acc"], label="train_acc")
-        plt.plot(np.arange(0, size), history["val_acc"], label="val_acc")
+        plt.plot(np.arange(0, size), history["accuracy"], label="train_acc")
+        plt.plot(np.arange(0, size), history["val_accuracy"], label="val_acc")
         plt.title("Training Loss and Accuracy")
         plt.xlabel("Epoch #")
         plt.ylabel("Loss/Accuracy")
         plt.legend()
         plt.savefig(self.png_log_file)
+        plt.close('all')
 
         print('save png log to {}'.format(self.png_log_file))
 
@@ -157,7 +179,7 @@ class TrainingState(Callback):
     def save_best_model(self):
         epoch = self.history['epoch']
         best = self.history['best']
-        val_acc = self.history['val_acc']
+        val_acc = self.history['val_accuracy']
         
         if val_acc[-1] > best:
             self.history['best'] = val_acc[-1]
@@ -179,11 +201,6 @@ if __name__ == '__main__':
     label_encoder_file = os.path.join(output_dir, 'label_encoder.pkl')
     report_file = os.path.join(output_dir, 'classification_report.txt')
 
-    data_loader = DataLoader()
-    trainX, testX, trainY, testY = data_loader.load_dataset()
-    data_loader.save_label_encoder(label_encoder_file)
-
-
     trainingState = TrainingState(output_dir)
     
     model = trainingState.load_last_model()
@@ -191,10 +208,13 @@ if __name__ == '__main__':
         model = create_model(67, 67, 3, 80)
         
     model.summary()
+    
+    data_loader = DataLoader('./dataset/annotation/prob-image-3/')
+    trainX, testX, trainY, testY = data_loader.load_dataset()
 
+    data_loader.save_label_encoder(label_encoder_file)
 
     aug = ImageDataGenerator(horizontal_flip=True, vertical_flip=True)
-    
     model.fit_generator(aug.flow(trainX, trainY),
                         validation_data=(testX, testY),
                         epochs=100,

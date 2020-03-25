@@ -4,6 +4,14 @@ import cv2
 import numpy as np
 from clip import clip_text, clip_image
 import pickle
+from imutils import paths
+import shutil
+import os
+
+import tensorflow as tf
+config = tf.compat.v1.ConfigProto()
+config.gpu_options.allow_growth = True
+session = tf.compat.v1.InteractiveSession(config=config)
 
 
 def eval_text(captcha):
@@ -31,8 +39,7 @@ def eval_image(captcha):
     images = clip_image(captcha)
 
     # load model
-    model = load_model('model/best_model.h5')
-    #model = load_model('model/last_model.h5')
+    model = load_model('temp/4/best_model.h5')
 
     # predict result
     w = h = 67
@@ -41,22 +48,51 @@ def eval_image(captcha):
 
     print(res)
 
-    with open('model/label_encoder.pkl', 'rb') as f:
+    with open('temp/4/label_encoder.pkl', 'rb') as f:
         l = pickle.load(f)
 
     print(l.inverse_transform(res))
+
+
+def load_unlabel_image(image_dir):
+    data_dir = image_dir
+    images = list(paths.list_images(data_dir))
+
+    X = []
+    p = []
+    for img_path in images:
+        x = cv2.imread(img_path)
+        mean = [103.939, 116.779, 123.68]
+        x = x.astype('float32') - mean
+        X.append(x)
+        p.append(img_path)
+
+    return np.array(X), p
+
     
 if __name__ == '__main__':
     # download a new captcha
-    captcha = fetch_captcha()
-    captcha = cv2.imdecode(np.frombuffer(captcha, np.uint8), cv2.IMREAD_COLOR)
+    #captcha = fetch_captcha()
+    #captcha = cv2.imdecode(np.frombuffer(captcha, np.uint8), cv2.IMREAD_COLOR)
 
-#    captcha = cv2.imread('./download/20200214/00001.jpg')
+#   captcha = cv2.imread('./download/20200214/00001.jpg')
 
-#    eval_text(captcha)
-    eval_image(captcha)
+#   eval_text(captcha)
+    #eval_image(captcha)
 
     # show the image
-    cv2.imshow('captcha', captcha)
-    cv2.waitKey(0)
+    #cv2.imshow('captcha', captcha)
+    #cv2.waitKey(0)
+
+    X, p = load_unlabel_image('./dataset/raw/image/')
+    model = load_model('./temp/3/best_model.h5')
+    res = model.predict_proba(X, batch_size=32)
+
+    with open('temp/3/label_encoder.pkl', 'rb') as f:
+        l = pickle.load(f)
+
+    for p, l in zip(p, l.inverse_transform(res)):
+        dst = './dataset/annotation/prob-image-4/{}'.format(l)
+        os.makedirs(dst, exist_ok=True)
+        shutil.copy(p, dst)
 
