@@ -2,3 +2,6 @@ model
 dataset
 temp
 __pycache__
+test/
+token.json
+key.json

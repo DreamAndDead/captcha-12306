@@ -60,6 +60,7 @@ def load_unlabel_image(image_dir):
 
     X = []
     p = []
+
     for img_path in images:
         x = cv2.imread(img_path)
         mean = [103.939, 116.779, 123.68]
@@ -69,21 +70,8 @@ def load_unlabel_image(image_dir):
 
     return np.array(X), p
 
-    
-if __name__ == '__main__':
-    # download a new captcha
-    #captcha = fetch_captcha()
-    #captcha = cv2.imdecode(np.frombuffer(captcha, np.uint8), cv2.IMREAD_COLOR)
 
-#   captcha = cv2.imread('./download/20200214/00001.jpg')
-
-#   eval_text(captcha)
-    #eval_image(captcha)
-
-    # show the image
-    #cv2.imshow('captcha', captcha)
-    #cv2.waitKey(0)
-
+def old():
     X, p = load_unlabel_image('./dataset/raw/image/')
     model = load_model('./temp/3/best_model.h5')
     res = model.predict_proba(X, batch_size=32)
@@ -96,3 +84,20 @@ if __name__ == '__main__':
         os.makedirs(dst, exist_ok=True)
         shutil.copy(p, dst)
 
+if __name__ == '__main__':
+    # download a new captcha
+    #captcha = fetch_captcha()
+    #captcha = cv2.imdecode(np.frombuffer(captcha, np.uint8), cv2.IMREAD_COLOR)
+
+    X, p = load_unlabel_image('./dataset/raw/image/')
+    model = load_model('./temp/12306.image.model.h5')
+    res = model.predict_classes(X, batch_size=32)
+
+    with open('./temp/texts.txt', 'r') as f:
+        labels = f.read().split('\n')
+
+    for p, l in zip(p, res):
+        dst = './dataset/annotation/image/{}'.format(labels[l])
+        os.makedirs(dst, exist_ok=True)
+        shutil.copy(p, dst)
+        

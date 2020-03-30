@@ -1,10 +1,6 @@
 # how it works
 
 
-TODO: 所有步骤加上代码示例
-
-
-
 ## dataset
 
 数据集是学习的第一步。
@@ -12,10 +8,6 @@ TODO: 所有步骤加上代码示例
 ### download
 
 使用脚本在 12306 网站爬取 1w 张验证码图片，日期 2020.02.14。
-
-```
-$ todo download captcha
-```
 
 ![captcha example](./example.jpg)
 
@@ -27,11 +19,16 @@ $ todo download captcha
 - 1w 个文本(text)
 - 8w 个图像(image)
 
+
+运行代码，下载指定数量的验证码（可从中断处继续）
+
+```
+$ python download.py -d ./dataset/download -n 10000
+```
+
 ### crop
 
 下一步，我们要将所有验证码分解为单独的部分，文本(text)图片放在一起，图像(image)图片放在一起。
-
-#### text
 
 text 所占的区域起始位置是固定的，但是终止位置不确定。
 
@@ -43,17 +40,13 @@ text 所占的区域起始位置是固定的，但是终止位置不确定。
 
 这样得到的 text 图片没有统一的 `shape`，无论是高度还是宽度。
 
-
-```
-$ todo crop text
-```
-
-#### image
-
 相比之下，每个 image 的起始位置和大小都是固定的，只需要固定截取 8 个位置即可。
 
+
+运行代码，将 text 和 image 分割到不同目录，作为训练数据（可从中断处继续）
+
 ```
-$ todo crop image
+$ python crop.py -d ./dataset/download -t ./dataset/raw/text -i ./dataset/raw/image
 ```
 
 ### label
@@ -70,7 +63,7 @@ $ todo crop image
 
 
 ```
-$ todo baidu api 识别
+$ python annotate.py -t ./dataset/raw/text -d ./dataset/annotate/text-ocr
 ```
 
 将全部 1w 条数据使用 ocr 接口识别之后，对所有结果做个数统计，从降序排列，
@@ -208,15 +201,28 @@ $ todo list result
 
 
 ```
-$ todo train text
+$ python train.py -t ./dataset/annotate/text -o ./model/text
 ```
 
 #### image
 
 image 图片共 8w 张，一共 80 个类，每个类约 1000 张图片，数据量还算可以。
 
-
-todo
-
 image 训练使用 VGG16 在 imagenet 训练好的模型，使用 fine tuning 来训练。
 
+```
+$ python train.py -i ./dataset/annotate/image -o ./model/image
+```
+
+
+## usage
+
+```
+$ python parse.py
+```
+
+or
+
+```
+$ python parse.py -i ./dataset/download/00001.jpg
+```
