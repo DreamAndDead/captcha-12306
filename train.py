@@ -2,24 +2,22 @@ import argparse
 import pickle
 import cv2
 import json
-from imutils import paths
 import os
 import numpy as np
+from imutils import paths
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.metrics import classification_report
 from keras.models import Sequential
-from keras import layers
 from keras.layers.convolutional import Conv2D, MaxPooling2D
-from keras.layers import Dense, Activation, Flatten
-from keras import backend as K
+from keras.layers import Dense, Activation, Flatten, BatchNormalization, GlobalAveragePooling2D, Dropout
 from keras import optimizers
 from keras.models import load_model
 from keras.callbacks import Callback
-from keras.callbacks import ReduceLROnPlateau
 from keras.applications import VGG16
 from keras.preprocessing.image import ImageDataGenerator
 from keras import regularizers
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -35,30 +33,24 @@ def create_model(model_type, shape, classes):
     inputShape = (height, width, depth)
 
     if model_type == 'text':
-        model = Sequential()
+        model = Sequential([
+            Conv2D(20, (5, 5), padding="same", activation='relu', input_shape=inputShape),
+            MaxPooling2D(pool_size=(2, 2), strides=(2, 2)),
 
-        # first set of CONV => RELU => POOL layers
-        model.add(Conv2D(20, (5, 5), padding="same",
-                         input_shape=inputShape))
-        model.add(Activation("relu"))
-        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+            Conv2D(20, (3, 3), padding="same", activation='relu'),
+            MaxPooling2D(pool_size=(2, 2), strides=(2, 2)),
 
-        # second set of CONV => RELU => POOL layers
-        model.add(Conv2D(50, (5, 5), padding="same"))
-        model.add(Activation("relu"))
-        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+            Flatten(),
+            BatchNormalization(),
 
-        # first (and only) set of FC => RELU layers
-        model.add(Flatten())
-        model.add(Dense(500))
-        model.add(Activation("relu"))
+            Dense(256, activation='relu'),
+            Dropout(0.20),
 
-        # softmax classifier
-        model.add(Dense(classes))
-        model.add(Activation("softmax"))
+            Dense(classes, activation='softmax'),
+        ])
 
         model.compile(loss="categorical_crossentropy",
-                      optimizer=optimizers.SGD(lr=0.05),
+                      optimizer=optimizers.SGD(lr=1e-3),
                       metrics=["accuracy"])
 
     elif model_type == 'image':
@@ -69,23 +61,16 @@ def create_model(model_type, shape, classes):
     
         model = Sequential([
             base,
-            layers.BatchNormalization(),
+            BatchNormalization(),
             
-            layers.GlobalAveragePooling2D(),
-            layers.BatchNormalization(),
+            GlobalAveragePooling2D(),
+            BatchNormalization(),
 
-            layers.Dense(512, activation='relu'),
-            layers.Dropout(0.50),
-            layers.BatchNormalization(),
+            Dense(512, activation='relu'),
+            Dropout(0.50),
+            BatchNormalization(),
 
-            layers.Dense(256, activation='relu'),
-            layers.Dropout(0.25),
-            layers.BatchNormalization(),
-
-            layers.Dense(128, activation='relu'),
-            layers.Dropout(0.125),
-
-            layers.Dense(classes, activation='softmax')
+            Dense(classes, activation='softmax')
         ])
     
         model.compile(loss="categorical_crossentropy",
@@ -96,17 +81,15 @@ def create_model(model_type, shape, classes):
 
 
 class DataLoader:
-    def __init__(self, data_type, data_dir, shape):
+    def __init__(self, data_type):
         self.data_type = data_type
-        self.data_dir = data_dir
-        self.shape = shape
 
-    def load_files(self):
-        files = list(paths.list_images(self.data_dir))
+    def load_dataset(self, data_dir):
+        file_paths = list(paths.list_images(data_dir))
 
         X = []
         Y = []
-        for file_path in files:
+        for file_path in file_paths:
             x = cv2.imread(file_path)
             x = self.preprocess(x)
             y = os.path.basename(os.path.dirname(file_path))
@@ -114,24 +97,27 @@ class DataLoader:
             X.append(x)
             Y.append(y)
 
-        return np.array(X), np.array(Y)
-
-    def load_dataset(self):
-        X, Y = self.load_files()
-
-        trainX, testX, trainY, testY = train_test_split(X, Y, test_size=0.2, random_state=42)
-
+        X = np.array(X)
+        Y = np.array(Y)
+        
         self.le = LabelBinarizer()
-        trainY = self.le.fit_transform(trainY)
-        testY = self.le.transform(testY)
+        Y = self.le.fit_transform(Y)
 
-        return trainX, testX, trainY, testY
-
+        return X, Y, file_paths
+    
     def get_label_classes(self):
         return self.le.classes_
     
+    def get_data_shape(self):
+        if self.data_type == 'text':
+            shape = (32, 32, 1)
+        elif self.data_type == 'image':
+            shape = (67, 67, 3)
+
+        return shape
+
     def preprocess(self, x):
-        width, height, depth = self.shape
+        width, height, depth = self.get_data_shape()
 
         if self.data_type == 'text':
             x = cv2.cvtColor(x, cv2.COLOR_BGR2GRAY)
@@ -239,7 +225,7 @@ class TrainingState(Callback):
             print('val_acc inc from {} to {}, save best model to {}'.format(best, val_acc[-1], self.best_model_file))
         else:
             print('no inc in val_acc ...')
-            
+
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
@@ -254,11 +240,9 @@ if __name__ == '__main__':
     dataset_dir = args['dataset']
     output_dir = args['output']
 
-    if dataset_type == 'text':
-        shape = (32, 32, 1)
-    elif dataset_type == 'image':
-        shape = (67, 67, 3)
-
+    data_loader = DataLoader(dataset_type)
+    shape = data_loader.get_data_shape()
+    
     batch_size=32
     classes = 80
 
@@ -274,8 +258,8 @@ if __name__ == '__main__':
         
     model.summary()
     
-    data_loader = DataLoader(dataset_type, dataset_dir, shape)
-    trainX, testX, trainY, testY = data_loader.load_dataset()
+    X, Y, _ = data_loader.load_dataset(dataset_dir)
+    trainX, testX, trainY, testY = train_test_split(X, Y, test_size=0.2, random_state=42)
 
     data_loader.save_label_encoder(label_encoder_file)
 
