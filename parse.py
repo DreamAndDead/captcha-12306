@@ -8,6 +8,7 @@ from imutils import paths
 import shutil
 import os
 import argparse
+from train import TrainingState, DataLoader
 
 import tensorflow as tf
 config = tf.compat.v1.ConfigProto()
@@ -15,51 +16,49 @@ config.gpu_options.allow_growth = True
 session = tf.compat.v1.InteractiveSession(config=config)
 
 
-def eval_text(model, captcha):
-    # split text part
-    text = crop_text(captcha)
-
-    # predict result
-    w = h = 32
-    x = cv2.cvtColor(text, cv2.COLOR_BGR2GRAY)
-    x = cv2.resize(x, (w, h), interpolation=cv2.INTER_CUBIC)
-    x = x.reshape((h, w, 1))
-    res = model.predict(np.array([x]))
-
-    with open('model/text-label.pkl', 'rb') as f:
-        l = pickle.load(f)
-
-    print(l.inverse_transform(res))
-
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='model in reality')
-#    parser.add_argument('-t', '--text_model_dir', type=str, required=True, help='')
+    parser.add_argument('-t', '--text_model_dir', type=str, required=True, help='')
     parser.add_argument('-i', '--image_model_dir', type=str, required=True, help='')
+    parser.add_argument('-c', '--captcha', type=str, help='')
     args = vars(parser.parse_args())
 
-#    text_model_path = os.path.join(args['text_model_dir'], 'best_model.h5')
-#    text_label_encoder_path = os.path.join(args['text_model_dir'], 'label_encoder.pkl')
+    if not args['captcha']:
+        captcha = fetch_captcha()
+        captcha = cv2.imdecode(np.frombuffer(captcha, np.uint8), cv2.IMREAD_COLOR)
+    else:
+        captcha = cv2.imread(args['captcha'])
 
-    image_model_path = os.path.join(args['image_model_dir'], 'best_model.h5')
-    image_label_encoder_path = os.path.join(args['image_model_dir'], 'label_encoder.pkl')
+    state = TrainingState(args['text_model_dir'])
+    loader = DataLoader('text')
 
-    # download a new captcha
-    captcha = fetch_captcha()
-    captcha = cv2.imdecode(np.frombuffer(captcha, np.uint8), cv2.IMREAD_COLOR)
+    text = crop_text(captcha)
+    text = loader.preprocess(text)
 
-    # split text part
-    images = crop_image(captcha)
+    model = state.load_best_model()
+    res = model.predict(np.array([text]))
 
-    # predict result
-    w = h = 67
-    X = np.array(images)
+    le_path = os.path.join(args['text_model_dir'], 'label_encoder.pkl')
+    le = loader.load_label_encoder(le_path)
 
-    model = load_model(image_model_path)
-    res = model.predict_proba(X)
+    print(le.inverse_transform(res))
 
-    with open(image_label_encoder_path, 'rb') as f:
-        l = pickle.load(f)
 
-    print(l.inverse_transform(res))
+    state = TrainingState(args['image_model_dir'])
+    loader = DataLoader('image')
+
+    images = []
+    for i in crop_image(captcha):
+        images.append(loader.preprocess(i))
+
+    model = state.load_best_model()
+    res = model.predict(np.array(images))
+
+    le_path = os.path.join(args['image_model_dir'], 'label_encoder.pkl')
+    le = loader.load_label_encoder(le_path)
+
+    print(le.inverse_transform(res))
+
+    cv2.imshow('captcha', captcha)
+    cv2.waitKey(0)

@@ -16,24 +16,6 @@ config.gpu_options.allow_growth = True
 session = tf.compat.v1.InteractiveSession(config=config)
 
 
-def eval_text(model, captcha):
-    # split text part
-    text = crop_text(captcha)
-
-    # predict result
-    w = h = 32
-    x = cv2.cvtColor(text, cv2.COLOR_BGR2GRAY)
-    x = cv2.resize(x, (w, h), interpolation=cv2.INTER_CUBIC)
-    x = x.reshape((h, w, 1))
-    res = model.predict(np.array([x]))
-
-    with open('model/text-label.pkl', 'rb') as f:
-        l = pickle.load(f)
-
-    print(l.inverse_transform(res))
-
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='model in reality')
     parser.add_argument('-m', '--model_dir', type=str, required=True, help='')
