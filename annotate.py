@@ -28,15 +28,28 @@ def ocr(img):
     return r.json()
 
 
-def annotate(kind):
-    image_paths = list(paths.list_images('./dataset/raw/text/'))
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='annotate text with baidu ocr api')
+    parser.add_argument('-t', '--text', type=str, required=True, help='text directory to annotate')
+    parser.add_argument('-o', '--output', type=str, required=True, help='target directory to save ocr result')
+    args = vars(parser.parse_args())
 
-    for image_path in image_paths:
-        basename = os.path.basename(image_path)
-        (filename, ext) = os.path.splitext(basename)
-        
-        img = cv2.imread(image_path)
+    text_dir = args['text']
+    output_dir = args['output']
 
+    os.makedirs(output_dir, exist_ok=True)
+
+    text_paths = list(paths.list_images(text_dir))
+    output_paths = list(paths.list_images(output_dir))
+    output_files = list(map(os.path.basename, output_paths))
+    
+    for text_path in text_paths:
+        basename = os.path.basename(text_path)
+        if basename in output_files:
+            print("%s is already annotated." % basename)
+            continue
+
+        img = cv2.imread(text_path)
         # https://cloud.baidu.com/doc/OCR/s/zk3h7xz52#%E8%AF%B7%E6%B1%82%E8%AF%B4%E6%98%8E
         # width and height are 15px at least
         (h, w, _) = img.shape
@@ -45,9 +58,11 @@ def annotate(kind):
             img = cv2.resize(img, size, interpolation=cv2.INTER_AREA)
 
         res = ocr(img)
+
         if res.get('error_code', None):
-            # such as qps limit
-            continue
+            # such as qps limit, etc.
+            print("some error returns from ocr api.")
+            break
         elif res.get('words_result_num') == 0:
             # can't recoganize
             label = 'unknown'
@@ -56,11 +71,15 @@ def annotate(kind):
             label = res['words_result'][0]['words']
 
 
+        print("recoganize %s as label %s" % (basename, label))
+        
+        output_path = os.path.join(output_dir, label, basename)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='annotate text with baidu ocr api')
-    parser.add_argument('-t', '--text', type=str, required=True, help='text directory to annotate')
-    parser.add_argument('-o', '--ocr', type=str, required=True, help='target directory to save ocr result')
-    args = vars(parser.parse_args())
+        shutil.copy(text_path, output_path)
+
+        time.sleep(0.5)
+
+        
 
 

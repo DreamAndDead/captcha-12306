@@ -2,11 +2,12 @@ from keras.models import load_model
 from download import fetch_captcha
 import cv2
 import numpy as np
-from clip import clip_text, clip_image
+from crop import crop_text, crop_image
 import pickle
 from imutils import paths
 import shutil
 import os
+import argparse
 
 import tensorflow as tf
 config = tf.compat.v1.ConfigProto()
@@ -14,12 +15,9 @@ config.gpu_options.allow_growth = True
 session = tf.compat.v1.InteractiveSession(config=config)
 
 
-def eval_text(captcha):
+def eval_text(model, captcha):
     # split text part
-    text = clip_text(captcha)
-
-    # load model
-    model = load_model('model/text-classifier.hdf5')
+    text = crop_text(captcha)
 
     # predict result
     w = h = 32
@@ -34,70 +32,34 @@ def eval_text(captcha):
     print(l.inverse_transform(res))
 
 
-def eval_image(captcha):
-    # split text part
-    images = clip_image(captcha)
 
-    # load model
-    model = load_model('temp/4/best_model.h5')
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='model in reality')
+#    parser.add_argument('-t', '--text_model_dir', type=str, required=True, help='')
+    parser.add_argument('-i', '--image_model_dir', type=str, required=True, help='')
+    args = vars(parser.parse_args())
+
+#    text_model_path = os.path.join(args['text_model_dir'], 'best_model.h5')
+#    text_label_encoder_path = os.path.join(args['text_model_dir'], 'label_encoder.pkl')
+
+    image_model_path = os.path.join(args['image_model_dir'], 'best_model.h5')
+    image_label_encoder_path = os.path.join(args['image_model_dir'], 'label_encoder.pkl')
+
+    # download a new captcha
+    captcha = fetch_captcha()
+    captcha = cv2.imdecode(np.frombuffer(captcha, np.uint8), cv2.IMREAD_COLOR)
+
+    # split text part
+    images = crop_image(captcha)
 
     # predict result
     w = h = 67
     X = np.array(images)
+
+    model = load_model(image_model_path)
     res = model.predict_proba(X)
 
-    print(res)
-
-    with open('temp/4/label_encoder.pkl', 'rb') as f:
+    with open(image_label_encoder_path, 'rb') as f:
         l = pickle.load(f)
 
     print(l.inverse_transform(res))
-
-
-def load_unlabel_image(image_dir):
-    data_dir = image_dir
-    images = list(paths.list_images(data_dir))
-
-    X = []
-    p = []
-
-    for img_path in images:
-        x = cv2.imread(img_path)
-        mean = [103.939, 116.779, 123.68]
-        x = x.astype('float32') - mean
-        X.append(x)
-        p.append(img_path)
-
-    return np.array(X), p
-
-
-def old():
-    X, p = load_unlabel_image('./dataset/raw/image/')
-    model = load_model('./temp/3/best_model.h5')
-    res = model.predict_proba(X, batch_size=32)
-
-    with open('temp/3/label_encoder.pkl', 'rb') as f:
-        l = pickle.load(f)
-
-    for p, l in zip(p, l.inverse_transform(res)):
-        dst = './dataset/annotation/prob-image-4/{}'.format(l)
-        os.makedirs(dst, exist_ok=True)
-        shutil.copy(p, dst)
-
-if __name__ == '__main__':
-    # download a new captcha
-    #captcha = fetch_captcha()
-    #captcha = cv2.imdecode(np.frombuffer(captcha, np.uint8), cv2.IMREAD_COLOR)
-
-    X, p = load_unlabel_image('./dataset/raw/image/')
-    model = load_model('./temp/12306.image.model.h5')
-    res = model.predict_classes(X, batch_size=32)
-
-    with open('./temp/texts.txt', 'r') as f:
-        labels = f.read().split('\n')
-
-    for p, l in zip(p, res):
-        dst = './dataset/annotation/image/{}'.format(labels[l])
-        os.makedirs(dst, exist_ok=True)
-        shutil.copy(p, dst)
-        

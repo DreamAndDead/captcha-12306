@@ -63,13 +63,14 @@ $ python crop.py -d ./dataset/download -t ./dataset/raw/text -i ./dataset/raw/im
 
 
 ```
-$ python annotate.py -t ./dataset/raw/text -d ./dataset/annotate/text-ocr
+$ python key.py -a AK -s SK
+$ python annotate.py -t ./dataset/raw/text -d ./dataset/annotation/text-ocr
 ```
 
-将全部 1w 条数据使用 ocr 接口识别之后，对所有结果做个数统计，从降序排列，
+将全部 1w 条数据使用 ocr 接口识别之后，对所有结果做个数统计，降序排列，
 
 ```
-$ todo list result
+$ python describe.py -d ./dataset/annotation/text-ocr
 ```
 
 我们可以观察到，有明确意义的标注大约有 80+ 个（准确来说应该是 80 个），如日历，菠萝，
@@ -77,7 +78,11 @@ $ todo list result
 
 统计纠正所有标注结果后，有理由相信，验证码 text 一共只有 80 个分类。
 
-下一步就是要人工将所有其它错误的分类图片，移动到正确分类的位置。
+下一步就是要人工将所有其它错误的分类图片，分类到正确的位置。
+
+```
+$ cp -a ./dataset/annotation/text-ocr ./dataset/annotation/text
+```
 
 将 80 个分类外的结果算作识别错误，如此来看 ocr 分类的正确率大概 60%（6000+ 张识别正确）。
 原因可能是因为 ocr 接口是一个通用接口，它先将图片中切块分出单字，再对单字进行识别，最后组成单字识别的结果为总结果。

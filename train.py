@@ -1,19 +1,25 @@
+import argparse
+import pickle
 import cv2
+import json
 from imutils import paths
-from os import path
+import os
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelBinarizer
-
+from sklearn.metrics import classification_report
 from keras.models import Sequential
+from keras import layers
 from keras.layers.convolutional import Conv2D, MaxPooling2D
 from keras.layers import Dense, Activation, Flatten
 from keras import backend as K
-from keras.optimizers import SGD
-from sklearn.metrics import classification_report
-from keras.callbacks import ModelCheckpoint
-import pickle
-
+from keras import optimizers
+from keras.models import load_model
+from keras.callbacks import Callback
+from keras.callbacks import ReduceLROnPlateau
+from keras.applications import VGG16
+from keras.preprocessing.image import ImageDataGenerator
+from keras import regularizers
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -24,114 +30,278 @@ config.gpu_options.allow_growth = True
 session = tf.compat.v1.InteractiveSession(config=config)
 
 
-def load_dataset(size):
-    (w, h, d) = size
-    data_dir = './dataset/annotation/text/'
-    images = list(paths.list_images(data_dir))
-    X = []
-    Y = []
-    for img_path in images:
-        x = cv2.imread(img_path)
-        if d == 1:
-            x = cv2.cvtColor(x, cv2.COLOR_BGR2GRAY)
-            x = cv2.resize(x, (w, h), interpolation=cv2.INTER_CUBIC)
-            x = x.reshape((h, w, 1))
-        else:
-            x = cv2.resize(x, (w, h), interpolation=cv2.INTER_CUBIC)
-
-        x = x.astype('float') / 255.0
-        y = path.basename(path.dirname(img_path))
-
-        X.append(x)
-        Y.append(y)
-
-    return np.array(X), np.array(Y)
-
-
-def build_network(width, height, depth, classes):
-    model = Sequential()
+def create_model(model_type, shape, classes):
+    width, height, depth = shape
     inputShape = (height, width, depth)
 
-    # LeNet
-    # first set of CONV => RELU => POOL layers
-    model.add(Conv2D(20, (5, 5), padding="same",
-                     input_shape=inputShape))
-    model.add(Activation("relu"))
-    model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+    if model_type == 'text':
+        model = Sequential()
 
-    # second set of CONV => RELU => POOL layers
-    model.add(Conv2D(50, (5, 5), padding="same"))
-    model.add(Activation("relu"))
-    model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+        # first set of CONV => RELU => POOL layers
+        model.add(Conv2D(20, (5, 5), padding="same",
+                         input_shape=inputShape))
+        model.add(Activation("relu"))
+        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
 
-    # first (and only) set of FC => RELU layers
-    model.add(Flatten())
-    model.add(Dense(500))
-    model.add(Activation("relu"))
+        # second set of CONV => RELU => POOL layers
+        model.add(Conv2D(50, (5, 5), padding="same"))
+        model.add(Activation("relu"))
+        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
 
-    # softmax classifier
-    model.add(Dense(classes))
-    model.add(Activation("softmax"))
+        # first (and only) set of FC => RELU layers
+        model.add(Flatten())
+        model.add(Dense(500))
+        model.add(Activation("relu"))
+
+        # softmax classifier
+        model.add(Dense(classes))
+        model.add(Activation("softmax"))
+
+        model.compile(loss="categorical_crossentropy",
+                      optimizer=optimizers.SGD(lr=0.05),
+                      metrics=["accuracy"])
+
+    elif model_type == 'image':
+        base = VGG16(weights='imagenet', include_top=False, input_shape=(height, width, depth))
+
+        for layer in base.layers:
+            layer.trainable = False
+    
+        model = Sequential([
+            base,
+            layers.BatchNormalization(),
+            
+            layers.GlobalAveragePooling2D(),
+            layers.BatchNormalization(),
+
+            layers.Dense(512, activation='relu'),
+            layers.Dropout(0.50),
+            layers.BatchNormalization(),
+
+            layers.Dense(256, activation='relu'),
+            layers.Dropout(0.25),
+            layers.BatchNormalization(),
+
+            layers.Dense(128, activation='relu'),
+            layers.Dropout(0.125),
+
+            layers.Dense(classes, activation='softmax')
+        ])
+    
+        model.compile(loss="categorical_crossentropy",
+                      optimizer=optimizers.SGD(lr=1e-2, momentum=0.9),
+                      metrics=["accuracy"])
 
     return model
 
 
-def train_text():
-    width = height = 32
-    depth = 1
-    classes = 80
+class DataLoader:
+    def __init__(self, data_type, data_dir, shape):
+        self.data_type = data_type
+        self.data_dir = data_dir
+        self.shape = shape
 
-    # load dataset
-    X, Y = load_dataset((width, height, depth))
+    def load_files(self):
+        files = list(paths.list_images(self.data_dir))
 
-    # label category
-    l = LabelBinarizer()
-    Y = l.fit_transform(Y)
-    labels = l.classes_
+        X = []
+        Y = []
+        for file_path in files:
+            x = cv2.imread(file_path)
+            x = self.preprocess(x)
+            y = os.path.basename(os.path.dirname(file_path))
 
-    with open('model/text-label.pkl', 'wb') as f:
-        pickle.dump(l, f)
+            X.append(x)
+            Y.append(y)
 
-    # split train and test
-    (trainX, testX, trainY, testY) = train_test_split(X, Y, test_size=0.2)
+        return np.array(X), np.array(Y)
 
-    # compose network
-    model = build_network(width, height, depth, classes)
+    def load_dataset(self):
+        X, Y = self.load_files()
 
-    # train network
-    opt = SGD(lr=0.05)
-    model.compile(loss="categorical_crossentropy", optimizer=opt, metrics=["accuracy"])
+        trainX, testX, trainY, testY = train_test_split(X, Y, test_size=0.2, random_state=42)
 
-    # save the min val loss model
-    checkpoint = ModelCheckpoint('model/text-classifier.hdf5', monitor="val_loss", mode="min",
-                                 save_best_only=True, save_weights_only=False, verbose=1)
-    callbacks = [checkpoint]
+        self.le = LabelBinarizer()
+        trainY = self.le.fit_transform(trainY)
+        testY = self.le.transform(testY)
 
-    # fit
-    epoch = 20
-    batch_size = 32
-    H = model.fit(trainX, trainY, validation_data=(testX, testY),
-                  batch_size=batch_size, epochs=epoch, callbacks=callbacks, verbose=1)
+        return trainX, testX, trainY, testY
 
-    predictions = model.predict(testX, batch_size=batch_size)
-    print(classification_report(testY.argmax(axis=1),
-                                predictions.argmax(axis=1),
-                                target_names=labels))
+    def get_label_classes(self):
+        return self.le.classes_
+    
+    def preprocess(self, x):
+        width, height, depth = self.shape
+
+        if self.data_type == 'text':
+            x = cv2.cvtColor(x, cv2.COLOR_BGR2GRAY)
+            x = cv2.resize(x, (width, height), interpolation=cv2.INTER_CUBIC)
+            x = x.reshape((height, width, 1))
+            x = x.astype('float32') / 255.0
+        elif self.data_type == 'image':
+            mean = [103.939, 116.779, 123.68]
+            x = cv2.resize(x, (width, height), interpolation=cv2.INTER_CUBIC)
+            x = x.astype('float32') - mean
+
+        return x
+
+    def save_label_encoder(self, le_file):
+        pickle.dump(self.le, open(le_file, 'wb'))
+
+    def load_label_encoder(self, le_file):
+        return pickle.load(open(le_file, 'rb'))
 
 
-    # plot train result
-    plt.style.use("ggplot")
-    plt.figure()
-    plt.plot(np.arange(0, epoch), H.history["loss"], label="train_loss")
-    plt.plot(np.arange(0, epoch), H.history["val_loss"], label="val_loss")
-    plt.plot(np.arange(0, epoch), H.history["accuracy"], label="train_acc")
-    plt.plot(np.arange(0, epoch), H.history["val_accuracy"], label="val_acc")
-    plt.title("Training Loss and Accuracy")
-    plt.xlabel("Epoch #")
-    plt.ylabel("Loss/Accuracy")
-    plt.legend()
-    plt.savefig('model/text.png')
+class TrainingState(Callback):
+    def __init__(self, state_dir):
+        super(TrainingState, self).__init__()
 
+        self.state_dir = state_dir
+
+        self.json_log_file = os.path.join(self.state_dir, 'logs.json')
+        self.png_log_file = os.path.join(self.state_dir, 'logs.png')
+        self.last_model_file = os.path.join(self.state_dir, 'last_model.h5')
+        self.best_model_file = os.path.join(self.state_dir, 'best_model.h5')
+
+        if os.path.exists(self.json_log_file):
+            with open(self.json_log_file, 'r') as f:
+                self.history = json.load(f)
+        else:
+            self.history = {
+                'epoch': -1,
+                'best': 0
+            }
+
+    def get_initial_epoch(self):
+        return self.history['epoch'] + 1
+
+    def load_last_model(self):
+        if os.path.exists(self.last_model_file):
+            return load_model(self.last_model_file)
+        else:
+            return None
+
+    def load_best_model(self):
+        if os.path.exists(self.best_model_file):
+            return load_model(self.best_model_file)
+        else:
+            return None
+
+    def on_epoch_end(self, epoch, logs=None):
+        self.history['epoch'] = epoch
+        
+        logs = logs or None
+        for k, v in logs.items():
+            self.history.setdefault(k, []).append(float(v))
+
+        self.save_json_log()
+        self.save_png_log()
+        self.save_last_model()
+        self.save_best_model()
+
+    def save_json_log(self):
+        with open(self.json_log_file, 'w') as f:
+            json.dump(self.history, f)
+
+        print('save json log to {}'.format(self.json_log_file))
+
+    def save_png_log(self):
+        history = self.history
+        size = history['epoch'] + 1
+        
+        plt.style.use("ggplot")
+        plt.figure()
+        plt.plot(np.arange(0, size), history["loss"], label="train_loss")
+        plt.plot(np.arange(0, size), history["val_loss"], label="val_loss")
+        plt.plot(np.arange(0, size), history["accuracy"], label="train_acc")
+        plt.plot(np.arange(0, size), history["val_accuracy"], label="val_acc")
+        plt.title("Training Loss and Accuracy")
+        plt.xlabel("Epoch #")
+        plt.ylabel("Loss/Accuracy")
+        plt.legend()
+        plt.savefig(self.png_log_file)
+        plt.close('all')
+
+        print('save png log to {}'.format(self.png_log_file))
+
+    def save_last_model(self):
+        self.model.save(self.last_model_file)
+        print('save last model to {}'.format(self.last_model_file))
+
+    def save_best_model(self):
+        epoch = self.history['epoch']
+        best = self.history['best']
+        val_acc = self.history['val_accuracy']
+        
+        if val_acc[-1] > best:
+            self.history['best'] = val_acc[-1]
+            self.model.save(self.best_model_file)
+            print('val_acc inc from {} to {}, save best model to {}'.format(best, val_acc[-1], self.best_model_file))
+        else:
+            print('no inc in val_acc ...')
+            
 
 if __name__ == '__main__':
-    train_text()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-e", "--epoch", type=int, default=100, help="how many epoch to train")
+    ap.add_argument("-d", "--dataset", required=True, help="dataset dir")
+    ap.add_argument("-t", "--type", required=True, choices=['text', 'image'], help="text or image dataset")
+    ap.add_argument("-o", "--output", required=True, help="output dir to save training state")
+    args = vars(ap.parse_args())
+
+    epoch = args['epoch']
+    dataset_type = args['type']
+    dataset_dir = args['dataset']
+    output_dir = args['output']
+
+    if dataset_type == 'text':
+        shape = (32, 32, 1)
+    elif dataset_type == 'image':
+        shape = (67, 67, 3)
+
+    batch_size=32
+    classes = 80
+
+    os.makedirs(output_dir, exist_ok=True)
+    label_encoder_file = os.path.join(output_dir, 'label_encoder.pkl')
+    report_file = os.path.join(output_dir, 'classification_report.txt')
+
+    trainingState = TrainingState(output_dir)
+    
+    model = trainingState.load_last_model()
+    if not model:
+        model = create_model(dataset_type, shape, classes)
+        
+    model.summary()
+    
+    data_loader = DataLoader(dataset_type, dataset_dir, shape)
+    trainX, testX, trainY, testY = data_loader.load_dataset()
+
+    data_loader.save_label_encoder(label_encoder_file)
+
+    if dataset_type == 'text':
+        model.fit(trainX, trainY,
+                  validation_data=(testX, testY),
+                  batch_size=batch_size,
+                  epochs=epoch,
+                  initial_epoch=trainingState.get_initial_epoch(),
+                  callbacks=[trainingState],
+                  verbose=1)
+    elif dataset_type == 'image':
+        aug = ImageDataGenerator(horizontal_flip=True, vertical_flip=True)
+        model.fit_generator(aug.flow(trainX, trainY),
+                            validation_data=(testX, testY),
+                            steps_per_epoch=len(trainX) // batch_size,
+                            epochs=epoch,
+                            initial_epoch=trainingState.get_initial_epoch(),
+                            callbacks=[trainingState],
+                            verbose=1)
+
+    predictions = model.predict(testX, batch_size=64)
+    report = classification_report(testY.argmax(axis=1),
+                                   predictions.argmax(axis=1),
+                                   target_names=data_loader.get_label_classes())
+    
+    with open(report_file, 'w') as f:
+        f.write(report)
+    
