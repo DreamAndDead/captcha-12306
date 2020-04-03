@@ -129,57 +129,68 @@ $ python describe.py -d ./dataset/annotation/text-ocr
 $ python annotate.py -t image -r ./dataset/raw/image -a ./dataset/annotation/text -o ./dataset/annotation/image-prob-00
 ```
 
-**第一步训练**
+**第一次训练**
 
-用 `image-prob-00` 数据集进行第一步训练，可以看到 acc 和 val_acc 都在 20% 左右徘徊。
+用 `image-prob-00` 数据集进行第一步训练。
 
-这个结果印证了上面所说的猜测，也间接说明了网络的分类性能，网络模型在隐约中遵从绝对正确分类的原则，但是无奈数据集不允许。
+
+```
+$ python train.py -t image -d dataset/cluster/image-prob-0/ -o model/cluster/image-prob-0
+```
+
+![](./try-0.png)
+
+可以看到 acc 和 val_acc 都在 20% 左右徘徊，这个结果印证了上面所说的猜测，也间接说明了网络的分类性能，网络模型在隐约中遵从绝对正确分类的原则，但是无奈数据集不允许。
 
 但是我们的数据不是准确分类的数据，所谓 `garbage in garbage out`，所以这里的 acc 不能完全指明状况。
 
-
-
 在得到第一步的模型之后，利用得到的模型对所有 image 数据进行分类，作为第二步的数据集。
 
+```
+$ python classify.py -t image -m ./model/cluster/image-prob-0 -r ./dataset/raw/image/ -o dataset/cluster/image-prob-1
+```
 
-
-
-**第二步训练**
+**第二次训练**
 
 从上一步得到的分类数据中，我们可以看到网络的效果，在每个分类中，正确分类的图片都多了起来，远远超过了原来的 20% 的估计值，说明之前的猜测还是有些道理的。
 
 应用同样的逻辑，自然可以在新的纯度更高的数据集中，训练出正确率更高的网络。
 
+
+```
+$ python train.py -t image -d dataset/cluster/image-prob-1/ -o model/cluster/image-prob-1
+```
+
+![](./try-1.png)
+
 从这一步开始就是就是精彩的地方了，从第一步得到的新数据集中，得到 90% 以上的 acc。
-
-
-
 但是我们依然不能从这个数字中断定，网络的分类是绝对正确的。
-
 
 同第一步一样，将新的网络分类所有 image 数据，作为下一步的数据集。
 
+```
+$ python classify.py -t image -m ./model/cluster/image-prob-1 -r ./dataset/raw/image/ -o dataset/cluster/image-prob-2
+```
 
 **第三步训练**
 
 过程同一二。
 
-**第四步训练**
+```
+$ python train.py -t image -d dataset/cluster/image-prob-2/ -o model/cluster/image-prob-2
+```
 
-过程同上。
+![](./try-2.png)
 
-
-
-
-
-最后一步得到的网络，对所有数据进行分类，作为图像标注的自动识别结果。
-
-
-查看 image 中各个分类的结果，不难发现正确率远没有达到 97%，最多 80%，需要人工调校才可以得到完全正确标注的数据集。
 
 ```
-$ cp  image-prob-03  image
+$ python classify.py -t image -m ./model/cluster/image-prob-2 -r ./dataset/raw/image/ -o dataset/cluster/image-prob-3
 ```
+
+这一个过程可以无限循环下去，但是就当前来说，高的 `val_acc` 并不代表绝对正确的分类，但是每个分类中正确的分类数越来越多。
+
+所以我们就在三步之后停止，将 `image-prob-3` 数据分类作为基准，做人工调整，得到最终的标注数据集。
+
 
 从上面的过程中，我们可以了解些什么？
 
