@@ -10,6 +10,15 @@
 
 打印结果
 
+```
+$ python parse.py
+```
+
+or
+
+```
+$ python parse.py -i ./dataset/download/00001.jpg
+```
 
 ## dataset
 

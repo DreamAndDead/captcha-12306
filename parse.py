@@ -60,5 +60,5 @@ if __name__ == '__main__':
 
     print(le.inverse_transform(res))
 
-    cv2.imshow('captcha', captcha)
+    cv2.imshow('press any key to escape', captcha)
     cv2.waitKey(0)

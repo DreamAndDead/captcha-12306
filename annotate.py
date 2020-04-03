@@ -29,8 +29,9 @@ def ocr(img):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='annotate text with baidu ocr api')
-    parser.add_argument('-t', '--text', type=str, required=True, help='text directory to annotate')
+    parser = argparse.ArgumentParser(description='annotate text/image raw data')
+    parser.add_argument('-t', '--type', type=str, required=True, help='data type')
+    parser.add_argument('-r', '--raw', type=str, required=True, help='raw data directory to annotate')
     parser.add_argument('-o', '--output', type=str, required=True, help='target directory to save ocr result')
     args = vars(parser.parse_args())
 
