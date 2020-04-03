@@ -30,6 +30,7 @@ if __name__ == '__main__':
     else:
         captcha = cv2.imread(args['captcha'])
 
+    # text
     state = TrainingState(args['text_model_dir'])
     loader = DataLoader('text')
 
@@ -42,9 +43,10 @@ if __name__ == '__main__':
     le_path = os.path.join(args['text_model_dir'], 'label_encoder.pkl')
     le = loader.load_label_encoder(le_path)
 
+    print("text label:")
     print(le.inverse_transform(res))
 
-
+    # image
     state = TrainingState(args['image_model_dir'])
     loader = DataLoader('image')
 
@@ -58,7 +60,9 @@ if __name__ == '__main__':
     le_path = os.path.join(args['image_model_dir'], 'label_encoder.pkl')
     le = loader.load_label_encoder(le_path)
 
+    print("image labels:")
     print(le.inverse_transform(res))
 
+    
     cv2.imshow('press any key to escape', captcha)
     cv2.waitKey(0)

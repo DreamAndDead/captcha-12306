@@ -13,14 +13,19 @@
 
 每张验证码中包含 **1** 个文本(text)，**8** 个图像(image)。
 
-比如上面的验证码，文本内容为 `航母`，图像标签依次为 `冰箱 航母 黑板 剪纸 红枣 调色板 航母 红枣`。
+比如上面的验证码，文本内容为 `航母`，图像标签依次为
+
+```
+冰箱 航母 黑板 剪纸
+红枣 调色板 航母 红枣
+```
 
 所以 1w 张验证码包含
 - 1w 个文本(text)
 - 8w 个图像(image)
 
 
-运行代码，下载指定数量的验证码（可从中断处继续）
+运行代码，从官网下载指定数量的验证码（可从中断处继续）
 
 ```
 $ python download.py -d ./dataset/download -n 10000
@@ -46,7 +51,7 @@ text 所占的区域起始位置是固定的，但是终止位置不确定。
 运行代码，将 text 和 image 分割到不同目录，作为训练数据（可从中断处继续）
 
 ```
-$ python crop.py -d ./dataset/download -t ./dataset/raw/text -i ./dataset/raw/image
+$ python crop.py -c ./dataset/download -t ./dataset/raw/text -i ./dataset/raw/image
 ```
 
 ### label
@@ -61,16 +66,20 @@ $ python crop.py -d ./dataset/download -t ./dataset/raw/text -i ./dataset/raw/im
 
 这里借助 `baidu ocr api` 进行初步的识别，后续再手动校正。
 
+AK 和 SK 的使用方式参考官方文档
+- [how to get token](https://ai.baidu.com/forum/topic/show/867951)
+- [ocr api](https://ai.baidu.com/tech/ocr/general)
 
 ```
-$ python key.py -a AK -s SK
-$ python annotate.py -t text -r ./dataset/raw/text -d ./dataset/annotation/text-ocr
+$ python key.py -a AK -s SK  # gen token first
+$ python annotate.py -t text -r ./dataset/raw/text -o ./dataset/annotation/text-ocr
 ```
 
 将全部 1w 条数据使用 ocr 接口识别之后，对所有结果做个数统计，降序排列，
 
 ```
 $ python describe.py -d ./dataset/annotation/text-ocr
+# todo output
 ```
 
 我们可以观察到，有明确意义的标注大约有 80+ 个（准确来说应该是 80 个），如日历，菠萝，
@@ -79,10 +88,6 @@ $ python describe.py -d ./dataset/annotation/text-ocr
 统计纠正所有标注结果后，有理由相信，验证码 text 一共只有 80 个分类。
 
 下一步就是要人工将所有其它错误的分类图片，分类到正确的位置。
-
-```
-$ cp -a ./dataset/annotation/text-ocr ./dataset/annotation/text
-```
 
 将 80 个分类外的结果算作识别错误，如此来看 ocr 分类的正确率大概 60%（6000+ 张识别正确）。
 原因可能是因为 ocr 接口是一个通用接口，它先将图片中切块分出单字，再对单字进行识别，最后组成单字识别的结果为总结果。
@@ -95,7 +100,7 @@ $ cp -a ./dataset/annotation/text-ocr ./dataset/annotation/text
 
 然而不幸的是，同样的方法对于标注图片不太可行。
 
-首先，不同于 ocr 接口，识图接口有数量限制，500次每天；
+首先，不同于 ocr 接口，识图接口有数量限制，500次每天，
 而且，由于识图接口也是一个通用接口，会得到五花八门的结果，不一定落在 80 个类中，同一个物体，可能有不同层次的描述，比如 `动物->老虎->华南虎`，所以最终得到的分类结果难以整理。
 
 如果 12306 使用 80 个 text 分类之外的图片种类来混淆，那问题就更难了。
@@ -121,7 +126,7 @@ $ cp -a ./dataset/annotation/text-ocr ./dataset/annotation/text
 
 
 ```
-$ python annotate.py -t image -r ./dataset/raw/image -d ./dataset/annotation/image-prob-00
+$ python annotate.py -t image -r ./dataset/raw/image -a ./dataset/annotation/text -o ./dataset/annotation/image-prob-00
 ```
 
 **第一步训练**
@@ -213,10 +218,10 @@ $ cp  image-prob-03  image
 所有 1w 张 text 图片，12306 每次提供的验证码是随机的，一共 80 个类，每个类平均约 125 张。
 
 每个类 125 张，分去 test 部分的数据，用于 train 的可能 100 张，感觉训练数量不是太充足。
-但是 text 图片着实简单，颜色和大小都有限，并且变形幅度不大，使用 CNN 可以轻易在这个数据集上得到 95% 以上的 `val_acc`。
+但是 text 图片着实简单，颜色和大小都有限，并且变形幅度不大，使用 CNN 可以轻易在这个数据集上得到 99% 以上的 `val_acc`。
 
 ```
-$ python train.py -t ./dataset/annotate/text -o ./model/text
+$ python train.py -t text -d ./dataset/annotate/text -o ./model/text
 ```
 
 ### image
@@ -225,10 +230,10 @@ image 图片共 8w 张，一共 80 个类，每个类约 1000 张图片，数据
 
 image 的模型使用 VGG16 在 imagenet 训练好的模型来提取 feature，最后只用 dense layer 进行最终分类。
 
-最终可达到 95% 的 `val_acc`。
+最终可达到 99% 的 `val_acc`。
 
 ```
-$ python train.py -i ./dataset/annotate/image -o ./model/image
+$ python train.py -t image -d ./dataset/annotate/image -o ./model/image
 ```
 
 ## details
@@ -242,7 +247,7 @@ $ python train.py -i ./dataset/annotate/image -o ./model/image
 
 这一点是鼓励在精度相同的情况下，我们要找到更小的模型，从而提取更准确的信息。
 
-以我们的 text 和 image 数据集来看，text 数据共 13.3MB，image 数据共 255.4MB，
+以我们的 text 和 image 数据集来看，text 数据共 14.0MB，image 数据共 267.8MB，
 再者数据集存在大量重复，假如重复度为 4，则两者模型的大小应该是多少合适呢？
 
 ### 分类出错

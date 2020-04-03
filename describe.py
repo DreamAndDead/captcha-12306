@@ -1,14 +1,14 @@
 import os
-from imutils import paths
 import argparse
+from imutils import paths
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='describe dataset annotation')
-    parser.add_argument('-d', '--dir', type=str, required=True, help='data directory to describe')
+    parser.add_argument('-d', '--dataset', type=str, required=True, help='data directory to describe')
     args = vars(parser.parse_args())
 
-    files = list(paths.list_images(args['dir']))
+    files = list(paths.list_images(args['dataset']))
 
     description = {}
     

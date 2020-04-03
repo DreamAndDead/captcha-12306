@@ -1,8 +1,7 @@
-import numpy as np
 import cv2
-from imutils import paths
 import os
 import argparse
+from imutils import paths
 
 
 def crop_text(captcha):
@@ -39,7 +38,7 @@ def crop_image(captcha):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='crop captcha to text and image part')
-    parser.add_argument('-d', '--dir', type=str, required=True, help='captcha directory')
+    parser.add_argument('-c', '--captcha', type=str, required=True, help='captcha directory')
     parser.add_argument('-t', '--text', type=str, required=True, help='target directory to save text part')
     parser.add_argument('-i', '--image', type=str, required=True, help='target directory to save image part')
     args = vars(parser.parse_args())
@@ -47,9 +46,9 @@ if __name__ == '__main__':
     os.makedirs(args['text'], exist_ok=True)
     os.makedirs(args['image'], exist_ok=True)
 
-    image_paths = list(paths.list_images(args["dir"]))
+    captcha_paths = list(paths.list_images(args["captcha"]))
     
-    for captcha_path in image_paths:
+    for captcha_path in captcha_paths:
         captcha_name = os.path.basename(captcha_path)
         (serial, ext) = os.path.splitext(captcha_name)
 

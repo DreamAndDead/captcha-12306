@@ -1,7 +1,7 @@
-import requests
+import os
 import json
 import argparse
-import os
+import requests
 
 
 key_file = 'key.json'
@@ -41,7 +41,7 @@ def dump_json_file(o, json_file):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='get token of baidu ocr api')
+    parser = argparse.ArgumentParser(description='generate token of baidu ocr api')
     parser.add_argument('-a', '--ak', type=str, required=True, help='api key')
     parser.add_argument('-s', '--sk', type=str, required=True, help='secret key')
     args = vars(parser.parse_args())

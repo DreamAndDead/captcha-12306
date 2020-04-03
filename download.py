@@ -16,7 +16,7 @@ def download_captcha(directory, serial):
     filename = str(serial).zfill(5) + '.jpg'
     filepath = os.path.join(directory, filename)
 
-    if os.path.exists(filepath):
+    if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
         print("have downloaded captcha %d." % serial)
     else:
         print("downloading captcha %d ... " % serial, end='')
@@ -24,6 +24,7 @@ def download_captcha(directory, serial):
             f.write(fetch_captcha())
             print("end.")
 
+        time.sleep(1)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='download 12306 captchas')
@@ -41,12 +42,4 @@ if __name__ == '__main__':
         except Exception as e:
             print(e)
             print('download captcha %d failed!' % serial)
-        
-        time.sleep(0.1)
 
-        if serial % 10 == 0:
-            time.sleep(1)
-        if serial % 100 == 0:
-            time.sleep(2)
-        if serial % 1000 == 0:
-            time.sleep(4)            

@@ -8,15 +8,14 @@ from imutils import paths
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.metrics import classification_report
-from keras.models import Sequential
-from keras.layers.convolutional import Conv2D, MaxPooling2D
-from keras.layers import Dense, Activation, Flatten, BatchNormalization, GlobalAveragePooling2D, Dropout
 from keras import optimizers
+from keras.models import Sequential
 from keras.models import load_model
 from keras.callbacks import Callback
 from keras.applications import VGG16
 from keras.preprocessing.image import ImageDataGenerator
-from keras import regularizers
+from keras.layers.convolutional import Conv2D, MaxPooling2D
+from keras.layers import Dense, Activation, Flatten, BatchNormalization, GlobalAveragePooling2D, Dropout
 
 import matplotlib
 matplotlib.use("Agg")
@@ -50,7 +49,7 @@ def create_model(model_type, shape, classes):
         ])
 
         model.compile(loss="categorical_crossentropy",
-                      optimizer=optimizers.SGD(lr=1e-3),
+                      optimizer=optimizers.SGD(lr=1e-3, momentum=0.9),
                       metrics=["accuracy"])
 
     elif model_type == 'image':
@@ -66,7 +65,7 @@ def create_model(model_type, shape, classes):
             GlobalAveragePooling2D(),
             BatchNormalization(),
 
-            Dense(512, activation='relu'),
+            Dense(1024, activation='relu'),
             Dropout(0.50),
             BatchNormalization(),
 
@@ -228,12 +227,12 @@ class TrainingState(Callback):
 
 
 if __name__ == '__main__':
-    ap = argparse.ArgumentParser()
-    ap.add_argument("-e", "--epoch", type=int, default=100, help="how many epoch to train")
-    ap.add_argument("-d", "--dataset", required=True, help="dataset dir")
-    ap.add_argument("-t", "--type", required=True, choices=['text', 'image'], help="text or image dataset")
-    ap.add_argument("-o", "--output", required=True, help="output dir to save training state")
-    args = vars(ap.parse_args())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-e", "--epoch", type=int, default=100, help="how many epoch to train")
+    parser.add_argument("-t", "--type", required=True, choices=['text', 'image'], help="text or image dataset")
+    parser.add_argument("-d", "--dataset", required=True, help="dataset dir")
+    parser.add_argument("-o", "--output", required=True, help="output dir to save training state")
+    args = vars(parser.parse_args())
 
     epoch = args['epoch']
     dataset_type = args['type']

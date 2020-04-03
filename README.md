@@ -4,34 +4,19 @@
 
 ## usage
 
-下载模型和label.pkl
+1. 下载模型
 
-分析验证码
 
-打印结果
 
-```
-$ python parse.py
-```
-
-or
+2. 识别验证码
 
 ```
-$ python parse.py -i ./dataset/download/00001.jpg
+$ python parse.py -t model/text -i model/image
 ```
-
-## dataset
-
-数据集使用 20200214 日的验证码，网络爬取 1w 张
-
-数据模型，结果，全部打包
-
-如何下载，如何使用
-
 
 ## how it works
 
-参见文档 how.md
+[参见文档](./doc/how.md)
 
 ## env
 
