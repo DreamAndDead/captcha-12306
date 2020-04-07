@@ -5,6 +5,8 @@ import os
 import argparse
 import numpy as np
 from imutils import paths
+from download import fetch_captcha
+from crop import crop_text, crop_image
 from train import TrainingState, DataLoader
 
 import tensorflow as tf
